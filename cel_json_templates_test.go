@@ -1,6 +1,7 @@
 package celjsontemplates_test
 
 import (
+	"encoding/json"
 	"testing"
 
 	celjsontemplates "github.com/cms103/cel-json-templates"
@@ -28,6 +29,14 @@ var referenceInputData = map[string]interface{}{
 	"age":    40,
 	"sub1":   88,
 	"status": 2,
+	"person": map[string]interface{}{
+		"Name": "Bob",
+		"Age":  22,
+		"Address": map[string]interface{}{
+			"Line1": "Here Street",
+			"Line2": "There city",
+		},
+	},
 }
 
 func TestMissingKeyErrorEnabled(t *testing.T) {
@@ -140,5 +149,29 @@ func TestRefDataLookup(t *testing.T) {
 
 	if string(res) != `{"medal":"Silver"}` {
 		t.Errorf("Unexpected output: %s", string(res))
+	}
+}
+
+func TestDataObjectOutput(t *testing.T) {
+	ourT, err := celjsontemplates.New(`{"bob": "data.person"}`)
+	if err != nil {
+		t.Error(err)
+	}
+
+	res, err := ourT.Expand(referenceInputData)
+	if err != nil {
+		t.Error("Error on missing key")
+	}
+
+	// Unmarshall the JSON output so we can test (order is not preserved)
+	var output map[string]interface{}
+
+	err = json.Unmarshal(res, &output)
+	if err != nil {
+		t.Errorf("Failed to produce valid JSON: %s\n", err)
+	}
+
+	if output["bob"].(map[string]interface{})["Address"].(map[string]interface{})["Line1"] != "Here Street" {
+		t.Errorf("Failed to expand json object correctly! Got map %v\n", output)
 	}
 }

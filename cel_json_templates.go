@@ -249,7 +249,6 @@ func parseJsonObject(env *cel.Env, jObj []byte) (*orderedmap.OrderedMap[string, 
 				objectData.Set(string(key), objVal)
 			case jsonparser.String:
 				// We can attempt compilation
-				fmt.Printf("Attempting to compile value %s\n", value)
 				ast, issues := env.Compile(string(value))
 				if issues != nil && issues.Err() != nil {
 					return issues.Err()

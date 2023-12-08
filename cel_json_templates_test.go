@@ -21,7 +21,8 @@ const referenceTemplate = `{
 		{"first": "data.age"},
 		{"second": 3}
 	],
-	"stringtest": "'lit'"
+	"stringtest": "'lit'",
+	"fragtest": "ref.fragtest ? fragment('frag1') : ''"
 }`
 
 var referenceInputData = map[string]interface{}{
@@ -319,4 +320,43 @@ func TestListOneArgFragmentOutput(t *testing.T) {
 	if !strings.Contains(resStr, `"Age":1`) {
 		t.Errorf("Missing value 1 in output: %s\n", string(res))
 	}
+}
+
+func BenchmarkSimpleTemplate(b *testing.B) {
+	ourT, err := celjsontemplates.New(referenceTemplate)
+	if err != nil {
+		b.Error(err)
+	}
+
+	for i := 0; i < b.N; i++ {
+		_, err = ourT.Expand(referenceInputData)
+		if err != nil {
+			b.Errorf("Error during benchmark: %v\n", err)
+		}
+	}
+
+}
+
+func BenchmarkFragmentTemplate(b *testing.B) {
+	ourT, err := celjsontemplates.New(referenceTemplate, celjsontemplates.WithRef(map[string]interface{}{
+		"fragtest": true,
+	}),
+		celjsontemplates.WithFragments(map[string]string{
+			"frag1": `
+		{
+			"NestedOne": "'Value goes here'",
+			"NestedList": [1,2,3,4,5]
+		}`,
+		}))
+	if err != nil {
+		b.Error(err)
+	}
+
+	for i := 0; i < b.N; i++ {
+		_, err = ourT.Expand(referenceInputData)
+		if err != nil {
+			b.Errorf("Error during benchmark: %v\n", err)
+		}
+	}
+
 }

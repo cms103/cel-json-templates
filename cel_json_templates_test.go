@@ -2,6 +2,7 @@ package celjsontemplates_test
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	celjsontemplates "github.com/cms103/cel-json-templates"
@@ -37,6 +38,7 @@ var referenceInputData = map[string]interface{}{
 			"Line2": "There city",
 		},
 	},
+	"list1": []interface{}{1, 2, 3, 4, 5, 6, 7, 8, 9},
 }
 
 func TestMissingKeyErrorEnabled(t *testing.T) {
@@ -173,5 +175,148 @@ func TestDataObjectOutput(t *testing.T) {
 
 	if output["bob"].(map[string]interface{})["Address"].(map[string]interface{})["Line1"] != "Here Street" {
 		t.Errorf("Failed to expand json object correctly! Got map %v\n", output)
+	}
+}
+
+func TestDataListOutput(t *testing.T) {
+	ourT, err := celjsontemplates.New(`{"alist": "data.list1.map(e, 'value' + string(e))", "secondlist": "data.list1"}`)
+	if err != nil {
+		t.Error(err)
+	}
+
+	res, err := ourT.Expand(referenceInputData)
+	if err != nil {
+		t.Error("Error on missing key")
+	}
+
+	resStr := string(res)
+
+	if !strings.Contains(resStr, "value4") {
+		t.Errorf("Missing value 4 in output: %s\n", string(res))
+	}
+}
+
+func TestNoArgFragmentOutput(t *testing.T) {
+	ourT, err := celjsontemplates.New(`{"alist": "fragment('frag1')"}`, celjsontemplates.WithFragments(map[string]string{
+		"frag1": `{
+			"Name": "'Test Name'",
+			"Age": "20+22",
+		}`}))
+	if err != nil {
+		t.Error(err)
+	}
+
+	res, err := ourT.Expand(referenceInputData)
+	if err != nil {
+		t.Error("Error on missing key")
+	}
+
+	resStr := string(res)
+
+	if !strings.Contains(resStr, `"Age":42`) {
+		t.Errorf("Missing value 4 in output: %s\n", string(res))
+	}
+}
+
+func TestOneArgFragmentOutput(t *testing.T) {
+	ourT, err := celjsontemplates.New(`{"alist": "fragment('frag1', 'blue')"}`, celjsontemplates.WithFragments(map[string]string{
+		"frag1": `{
+			"Name": "'Test Name'",
+			"Age": "20+22",
+			"EyeColour": "args[0]"
+		}`}))
+	if err != nil {
+		t.Error(err)
+	}
+
+	res, err := ourT.Expand(referenceInputData)
+	if err != nil {
+		t.Error("Error on missing key")
+	}
+
+	resStr := string(res)
+
+	if !strings.Contains(resStr, `"Age":42`) {
+		t.Errorf("Missing value 4 in output: %s\n", string(res))
+	}
+
+	if !strings.Contains(resStr, `"EyeColour":"blue"`) {
+		t.Errorf("Missing value 4 in output: %s\n", string(res))
+	}
+}
+
+func TestTwoArgFragmentOutput(t *testing.T) {
+	ourT, err := celjsontemplates.New(`{"alist": "fragment('frag1', 'blue', data.person.Name)"}`, celjsontemplates.WithFragments(map[string]string{
+		"frag1": `{
+			"Name": "'Test Name'",
+			"Age": "20+22",
+			"EyeColour": "args[0]",
+			"AName": "args[1]"
+		}`}))
+	if err != nil {
+		t.Error(err)
+	}
+
+	res, err := ourT.Expand(referenceInputData)
+	if err != nil {
+		t.Error("Error on missing key")
+	}
+
+	resStr := string(res)
+
+	if !strings.Contains(resStr, `"Age":42`) {
+		t.Errorf("Missing value 4 in output: %s\n", string(res))
+	}
+
+	if !strings.Contains(resStr, `"EyeColour":"blue"`) {
+		t.Errorf("Missing value 4 in output: %s\n", string(res))
+	}
+
+	if !strings.Contains(resStr, `"AName":"Bob"`) {
+		t.Errorf("Missing value 4 in output: %s\n", string(res))
+	}
+}
+
+func TestListNoArgFragmentOutput(t *testing.T) {
+	ourT, err := celjsontemplates.New(`{"ourresult": "data.list1.fragment('frag1')", "list": "data.list1"}`, celjsontemplates.WithFragments(map[string]string{
+		"frag1": `{
+			"Name": "'Test Name'",
+			"Age": "args[0]",
+		}`}))
+	if err != nil {
+		t.Error(err)
+	}
+
+	res, err := ourT.Expand(referenceInputData)
+	if err != nil {
+		t.Error("Error on missing key")
+	}
+
+	resStr := string(res)
+
+	if !strings.Contains(resStr, `"Age":1`) {
+		t.Errorf("Missing value 1 in output: %s\n", string(res))
+	}
+}
+
+func TestListOneArgFragmentOutput(t *testing.T) {
+	ourT, err := celjsontemplates.New(`{"ourresult": "data.list1.fragment('frag1', data.person.Name)", "list": "data.list1"}`, celjsontemplates.WithFragments(map[string]string{
+		"frag1": `{
+			"Name": "args[1]",
+			"Age": "args[0]",
+		}`}))
+	if err != nil {
+		t.Error(err)
+	}
+
+	res, err := ourT.Expand(referenceInputData)
+	if err != nil {
+		t.Error("Error on missing key")
+	}
+
+	resStr := string(res)
+
+	if !strings.Contains(resStr, `"Age":1`) {
+		t.Errorf("Missing value 1 in output: %s\n", string(res))
 	}
 }

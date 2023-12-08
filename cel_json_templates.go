@@ -21,6 +21,8 @@ type Template struct {
 	celOptions         []cel.EnvOption
 	compiledTemplate   *orderedmap.OrderedMap[string, interface{}]
 	errorOnMissingKeys bool
+	fragments          map[string]string
+	compiledFragments  map[string]*orderedmap.OrderedMap[string, interface{}]
 }
 
 func (t *Template) Expand(data map[string]interface{}) ([]byte, error) {
@@ -79,7 +81,7 @@ func (t *Template) ExpandJsonData(data string) ([]byte, error) {
 
 }
 
-func (t *Template) expandNode(input map[string]interface{}, node *orderedmap.OrderedMap[string, interface{}]) (*orderedmap.OrderedMap[string, interface{}], error) {
+func (t *Template) expandNode(input map[string]any, node *orderedmap.OrderedMap[string, interface{}]) (*orderedmap.OrderedMap[string, interface{}], error) {
 	// Our output data
 	outputData := orderedmap.New[string, interface{}]()
 
@@ -173,6 +175,128 @@ func (t *Template) expandNodeList(input map[string]interface{}, nodeList []inter
 	return outputList, nil
 }
 
+func (t *Template) getFragmentsFunction() cel.EnvOption {
+	ourBinding := cel.FunctionBinding(func(args ...ref.Val) ref.Val {
+		// Search for the fragment name in the first argument, add additional arguments to the env then execute.
+		if len(args) == 0 {
+			return types.WrapErr(errors.New("fragment takes at least one argument - the name of the fragment to use"))
+		}
+
+		ct, ok := t.compiledFragments[args[0].Value().(string)]
+		if !ok {
+			return types.WrapErr(errors.New("fragment not found"))
+		}
+
+		var passedArgs []interface{}
+		for _, ourArg := range args[1:] {
+			passedArgs = append(passedArgs, ourArg.Value())
+		}
+
+		input := map[string]interface{}{
+			"args": passedArgs,
+		}
+
+		if t.ref != nil {
+			input["ref"] = t.ref
+		}
+
+		outputData, err := t.expandNode(input, ct)
+
+		if err != nil {
+			types.WrapErr(err)
+		}
+
+		return WrapOrderedCelMap(outputData)
+		// return types.DefaultTypeAdapter.NativeToValue(outputData)
+		// return orderedCelMapCustomTypeAdapter{}.NativeToValue(outputData)
+
+	})
+
+	listBasedBinding := cel.FunctionBinding(func(args ...ref.Val) ref.Val {
+		// Search for the fragment name in the first argument, add additional arguments to the env then execute.
+		if len(args) < 2 {
+			return types.WrapErr(errors.New("fragment takes at least one argument - the name of the fragment to use"))
+		}
+
+		ct, ok := t.compiledFragments[args[1].Value().(string)]
+		if !ok {
+			return types.WrapErr(errors.New("fragment not found"))
+		}
+
+		var passedArgs []interface{}
+		// Placeholder in position 0 of the passed args - will be the item
+		passedArgs = append(passedArgs, nil)
+		for _, ourArg := range args[2:] {
+			passedArgs = append(passedArgs, ourArg.Value())
+		}
+
+		input := map[string]interface{}{
+			"args": passedArgs,
+		}
+
+		if t.ref != nil {
+			input["ref"] = t.ref
+		}
+
+		var resultList []interface{}
+		for _, value := range args[0].Value().([]interface{}) {
+			passedArgs[0] = value
+			outputData, err := t.expandNode(input, ct)
+
+			if err != nil {
+				types.WrapErr(err)
+			}
+
+			resultList = append(resultList, outputData)
+
+			// resultList = append(resultList, WrapOrderedCelMap(outputData))
+		}
+
+		return types.DefaultTypeAdapter.NativeToValue(resultList)
+
+	})
+
+	return cel.Function("fragment",
+		cel.Overload("fragment_string_dyn", []*cel.Type{cel.StringType}, cel.DynType,
+			ourBinding,
+		),
+		cel.Overload("fragment_string_dyn_dyn", []*cel.Type{cel.StringType, cel.DynType}, cel.DynType,
+			ourBinding,
+		),
+		cel.Overload("fragment_string_dyn_dyn_dyn", []*cel.Type{cel.StringType, cel.DynType, cel.DynType}, cel.DynType,
+			ourBinding,
+		),
+		cel.Overload("fragment_string_dyn_dyn_dyn_dyn", []*cel.Type{cel.StringType, cel.DynType, cel.DynType, cel.DynType}, cel.DynType,
+			ourBinding,
+		),
+		cel.Overload("fragment_string_dyn_dyn_dyn_dyn_dyn", []*cel.Type{cel.StringType, cel.DynType, cel.DynType, cel.DynType, cel.DynType}, cel.DynType,
+			ourBinding,
+		),
+		cel.Overload("fragment_string_dyn_dyn_dyn_dyn_dyn_dyn", []*cel.Type{cel.StringType, cel.DynType, cel.DynType, cel.DynType, cel.DynType, cel.DynType}, cel.DynType,
+			ourBinding,
+		),
+		// Now the list based overloads
+		cel.MemberOverload("dyn_fragment_string_dyn", []*cel.Type{cel.DynType, cel.StringType}, cel.DynType,
+			listBasedBinding,
+		),
+		cel.MemberOverload("dyn_fragment_string_dyn_dyn", []*cel.Type{cel.DynType, cel.StringType, cel.DynType}, cel.DynType,
+			listBasedBinding,
+		),
+		cel.MemberOverload("dyn_fragment_string_dyn_dyn_dyn", []*cel.Type{cel.DynType, cel.StringType, cel.DynType, cel.DynType}, cel.DynType,
+			listBasedBinding,
+		),
+		cel.MemberOverload("dyn_fragment_string_dyn_dyn_dyn_dyn", []*cel.Type{cel.DynType, cel.StringType, cel.DynType, cel.DynType, cel.DynType}, cel.DynType,
+			listBasedBinding,
+		),
+		cel.MemberOverload("dyn_fragment_string_dyn_dyn_dyn_dyn_dyn", []*cel.Type{cel.DynType, cel.StringType, cel.DynType, cel.DynType, cel.DynType, cel.DynType}, cel.DynType,
+			listBasedBinding,
+		),
+		cel.MemberOverload("dyn_fragment_string_dyn_dyn_dyn_dyn_dyn_dyn", []*cel.Type{cel.DynType, cel.StringType, cel.DynType, cel.DynType, cel.DynType, cel.DynType, cel.DynType}, cel.DynType,
+			listBasedBinding,
+		),
+	)
+}
+
 type templateConfigFunc func(t *Template)
 
 // WithRef provides a "ref" object in the CEL environment
@@ -201,20 +325,33 @@ func WithCelOptions(moreOptions []cel.EnvOption) templateConfigFunc {
 	}
 }
 
+func WithFragments(templates map[string]string) templateConfigFunc {
+	return func(t *Template) {
+		t.fragments = templates
+	}
+}
+
 func New(template string, config ...templateConfigFunc) (*Template, error) {
 	t := &Template{
-		ref: make(map[string]interface{}),
+		ref:               make(map[string]interface{}),
+		fragments:         make(map[string]string),
+		compiledFragments: make(map[string]*orderedmap.OrderedMap[string, interface{}]),
 	}
 	for _, cfg := range config {
 		cfg(t)
 	}
 
 	// Build the CEL compilation environment.
-	t.celOptions = append(t.celOptions, cel.Variable("ref", cel.MapType(cel.StringType, cel.DynType)))
-	t.celOptions = append(t.celOptions, cel.Variable("data", cel.MapType(cel.StringType, cel.DynType)))
-	t.celOptions = append(t.celOptions, getRemoveFunction())
+	var templateOptions []cel.EnvOption
+	templateOptions = append(templateOptions, t.celOptions...)
 
-	env, err := cel.NewEnv(t.celOptions...)
+	templateOptions = append(templateOptions, cel.Variable("ref", cel.MapType(cel.StringType, cel.DynType)))
+	templateOptions = append(templateOptions, cel.Variable("data", cel.MapType(cel.StringType, cel.DynType)))
+	templateOptions = append(templateOptions, getRemoveFunction())
+	templateOptions = append(templateOptions, t.getFragmentsFunction())
+	templateOptions = append(templateOptions, cel.Types(OrderedCelMapType))
+
+	env, err := cel.NewEnv(templateOptions...)
 
 	if err != nil {
 		return nil, err
@@ -225,6 +362,32 @@ func New(template string, config ...templateConfigFunc) (*Template, error) {
 
 	if err != nil {
 		return nil, err
+	}
+
+	// Compile any fragments now
+	var fragmentOptions []cel.EnvOption
+	fragmentOptions = append(fragmentOptions, t.celOptions...)
+
+	fragmentOptions = append(fragmentOptions, cel.Variable("ref", cel.MapType(cel.StringType, cel.DynType)))
+	fragmentOptions = append(fragmentOptions, cel.Variable("args", cel.ListType(cel.DynType)))
+	fragmentOptions = append(fragmentOptions, getRemoveFunction())
+	fragmentOptions = append(fragmentOptions, cel.Types(OrderedCelMapType))
+
+	fragEnv, err := cel.NewEnv(fragmentOptions...)
+
+	if err != nil {
+		return nil, err
+	}
+
+	for name, fragment := range t.fragments {
+		// Parse the template from JSON
+		compiledFragment, err := parseTemplate(fragEnv, []byte(fragment))
+
+		if err != nil {
+			return nil, err
+		}
+
+		t.compiledFragments[name] = compiledFragment
 	}
 
 	return t, nil
@@ -348,7 +511,6 @@ func getRemoveFunction() cel.EnvOption {
 	return cel.Function("remove_property",
 		cel.Overload("remove_property_dyn", []*cel.Type{}, cel.DynType,
 			cel.FunctionBinding(func(args ...ref.Val) ref.Val {
-				fmt.Printf("MADE IT HERE")
 				return types.WrapErr(removeAttributeFromOutput)
 			}),
 		),

@@ -31,8 +31,8 @@ Additional reference data can be provided when compiling the template, enabling 
 An input of:
 ```
 {
-    "Name": "data.firstName",
-    "Category": "ref.categories[data.type]"
+    "firstName": "Bob",
+    "type": "u"
 }
 ```
 
@@ -101,7 +101,22 @@ Combine with a template of:
 
 To produce output of:
 ```
-{"Person":"Bob","Interests":[{"Activity":"Hobby","Kind":"eating"},{"Activity":"Hobby","Kind":"sleeping"}],"Other":{"TotalActivities":2}}
+{
+    "Person": "Bob",
+    "Interests": [
+        {
+            "Activity": "Hobby",
+            "Kind": "eating"
+        },
+        {
+            "Activity": "Hobby",
+            "Kind": "sleeping"
+        }
+    ],
+    "Other": {
+        "TotalActivities": 2
+    }
+}
 ```
 
 ## Getting Started

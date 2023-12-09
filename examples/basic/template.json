@@ -1,0 +1,4 @@
+{
+    "Name": "data.firstName",
+    "Rating": "data.donuts > 4 ? 'Donut fan' : 'Donut eater'"
+}

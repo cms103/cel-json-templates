@@ -1,0 +1,4 @@
+{
+    "Name": "data.firstName",
+    "Category": "ref.categories[data.type]"
+}

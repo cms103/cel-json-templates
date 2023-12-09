@@ -1,0 +1,5 @@
+{
+    "Person": "data.name",
+    "Interests": "data.interests.fragment ('interestFragment')",
+    "Other": "fragment ('summary', data.interests.size())"
+}

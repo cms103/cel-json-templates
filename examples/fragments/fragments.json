@@ -1,0 +1,9 @@
+{
+    "interestFragment": {
+        "Activity": "'Hobby'",
+        "Kind": "args[0]"
+    },
+    "summary": {
+        "TotalActivities": "args[0]"
+    }
+}

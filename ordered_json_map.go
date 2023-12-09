@@ -4,8 +4,12 @@ import (
 	"fmt"
 
 	"github.com/buger/jsonparser"
+	"github.com/google/cel-go/common/types"
 	orderedmap "github.com/wk8/go-ordered-map/v2"
 )
+
+// These functions are currently unused - but the objective is to use them for input
+// parsing in the future.
 
 func UnmarshallJson(jsonData []byte) (*orderedmap.OrderedMap[string, any], error) {
 	return readJsonObject(jsonData)
@@ -23,9 +27,10 @@ func readJsonObject(jObj []byte) (*orderedmap.OrderedMap[string, any], error) {
 				if err != nil {
 					return err
 				}
+				// objectData.Set(string(key), WrapOrderedCelMap(objVal))
 				objectData.Set(string(key), objVal)
 			case jsonparser.String:
-				objectData.Set(string(key), string(value))
+				objectData.Set(string(key), types.String(string(value)))
 			case jsonparser.Boolean:
 				bval, err := jsonparser.ParseBoolean(value)
 				if err != nil {
@@ -58,6 +63,7 @@ func readJsonObject(jObj []byte) (*orderedmap.OrderedMap[string, any], error) {
 	return objectData, nil
 }
 
+// func readJsonList(jObj []byte) (ref.Val, error) {
 func readJsonList(jObj []byte) ([]interface{}, error) {
 	var ourArray []interface{}
 	var lastError error
@@ -94,5 +100,6 @@ func readJsonList(jObj []byte) ([]interface{}, error) {
 		}
 	})
 
+	// return types.NewDynamicList(OrderedCelMapAdapter, ourArray), lastError
 	return ourArray, lastError
 }

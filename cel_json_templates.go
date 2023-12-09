@@ -3,7 +3,6 @@ package celjsontemplates
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"strings"
 
 	"github.com/buger/jsonparser"
@@ -16,16 +15,29 @@ import (
 // Used to communicate that this attribute should be removed from the template output
 var removeAttributeFromOutput = errors.New("remove attribute")
 
-type Template struct {
-	ref                map[string]interface{}
-	celOptions         []cel.EnvOption
-	compiledTemplate   *orderedmap.OrderedMap[string, interface{}]
-	errorOnMissingKeys bool
-	fragments          map[string]string
-	compiledFragments  map[string]*orderedmap.OrderedMap[string, interface{}]
+// Template represents a CEL JSON Template
+type Template interface {
+	// Expand runs the CEL expressions in the template against the provided data and returns the result
+	Expand(data map[string]interface{}) ([]byte, error)
 }
 
-func (t *Template) Expand(data map[string]interface{}) ([]byte, error) {
+// The structure that implements Template
+type celTemplate struct {
+	// ref holds the reference data
+	ref map[string]interface{}
+	// celOptions is the list of env options we'll use in the CEL environment
+	celOptions []cel.EnvOption
+	// compiledTemplate holds the compiled CEL expressions
+	compiledTemplate *orderedmap.OrderedMap[string, interface{}]
+	// errorOnMissingKeys flag controls whether to error if a key is not found
+	errorOnMissingKeys bool
+	// fragments holds the list of fragments that are available to this template
+	fragments map[string]string
+	// compiledFragments holds the CEL compiled fragments
+	compiledFragments map[string]*orderedmap.OrderedMap[string, interface{}]
+}
+
+func (t *celTemplate) Expand(data map[string]interface{}) ([]byte, error) {
 	input := map[string]interface{}{
 		"data": data,
 	}
@@ -50,18 +62,21 @@ func (t *Template) Expand(data map[string]interface{}) ([]byte, error) {
 	return jdata, nil
 }
 
-func (t *Template) ExpandJsonData(data string) ([]byte, error) {
+// ExpandJsonData will be used in the future to allow direct expansion of data
+func (t *celTemplate) ExpandJsonData(data string) ([]byte, error) {
 	inputJsonAsData, err := UnmarshallJson([]byte(data))
 	if err != nil {
 		return nil, err
 	}
-	fmt.Printf("data object: %v\n", inputJsonAsData)
+	//fmt.Printf("data object: %v\n", inputJsonAsData)
+
 	input := map[string]interface{}{
 		"data": inputJsonAsData,
 	}
 
 	if t.ref != nil {
 		input["ref"] = t.ref
+		// input.m.Set("ref", t.ref)
 	}
 
 	outputData, err := t.expandNode(input, t.compiledTemplate)
@@ -81,7 +96,7 @@ func (t *Template) ExpandJsonData(data string) ([]byte, error) {
 
 }
 
-func (t *Template) expandNode(input map[string]any, node *orderedmap.OrderedMap[string, interface{}]) (*orderedmap.OrderedMap[string, interface{}], error) {
+func (t *celTemplate) expandNode(input map[string]any, node *orderedmap.OrderedMap[string, interface{}]) (*orderedmap.OrderedMap[string, interface{}], error) {
 	// Our output data
 	outputData := orderedmap.New[string, interface{}]()
 
@@ -128,7 +143,7 @@ func (t *Template) expandNode(input map[string]any, node *orderedmap.OrderedMap[
 	return outputData, nil
 }
 
-func (t *Template) expandNodeList(input map[string]interface{}, nodeList []interface{}) ([]interface{}, error) {
+func (t *celTemplate) expandNodeList(input map[string]interface{}, nodeList []interface{}) ([]interface{}, error) {
 	// Our output data
 	var outputList []interface{} = make([]interface{}, 0)
 
@@ -150,6 +165,7 @@ func (t *Template) expandNodeList(input map[string]interface{}, nodeList []inter
 				}
 
 			}
+
 			outputList = append(outputList, out.Value())
 		case *orderedmap.OrderedMap[string, interface{}]:
 			// Sub object - expand it
@@ -175,7 +191,7 @@ func (t *Template) expandNodeList(input map[string]interface{}, nodeList []inter
 	return outputList, nil
 }
 
-func (t *Template) getFragmentsFunction() cel.EnvOption {
+func (t *celTemplate) getFragmentsFunction() cel.EnvOption {
 	ourBinding := cel.FunctionBinding(func(args ...ref.Val) ref.Val {
 		// Search for the fragment name in the first argument, add additional arguments to the env then execute.
 		if len(args) == 0 {
@@ -206,7 +222,7 @@ func (t *Template) getFragmentsFunction() cel.EnvOption {
 			types.WrapErr(err)
 		}
 
-		return WrapOrderedCelMap(outputData)
+		return wrapOrderedCelMap(outputData)
 		// return types.DefaultTypeAdapter.NativeToValue(outputData)
 		// return orderedCelMapCustomTypeAdapter{}.NativeToValue(outputData)
 
@@ -252,7 +268,8 @@ func (t *Template) getFragmentsFunction() cel.EnvOption {
 			// resultList = append(resultList, WrapOrderedCelMap(outputData))
 		}
 
-		return types.DefaultTypeAdapter.NativeToValue(resultList)
+		return orderedCelMapAdapter.NativeToValue(resultList)
+		// return types.DefaultTypeAdapter.NativeToValue(resultList)
 
 	})
 
@@ -297,13 +314,14 @@ func (t *Template) getFragmentsFunction() cel.EnvOption {
 	)
 }
 
-type templateConfigFunc func(t *Template)
+// WithXXX functions provide configuration options by returning TemplateConfigFunc
+type TemplateConfigFunc func(t *celTemplate)
 
 // WithRef provides a "ref" object in the CEL environment
 // This can be used to pass reference data used in the template
 // For example to map values across data models
-func WithRef(ref map[string]interface{}) templateConfigFunc {
-	return func(t *Template) {
+func WithRef(ref map[string]interface{}) TemplateConfigFunc {
+	return func(t *celTemplate) {
 		t.ref = ref
 
 	}
@@ -311,28 +329,30 @@ func WithRef(ref map[string]interface{}) templateConfigFunc {
 
 // WithMissingKeyErrors will trigger errors when a template CEL expression refers to a missing key.
 // By default such errors are suppressed
-func WithMissingKeyErrors() templateConfigFunc {
-	return func(t *Template) {
+func WithMissingKeyErrors() TemplateConfigFunc {
+	return func(t *celTemplate) {
 		t.errorOnMissingKeys = true
 	}
 }
 
 // WithCelOptions allows additional CEL EnvOptions to be used in the template.
 // This can be used to add custom functions and other CEL behaviour modifications
-func WithCelOptions(moreOptions []cel.EnvOption) templateConfigFunc {
-	return func(t *Template) {
+func WithCelOptions(moreOptions []cel.EnvOption) TemplateConfigFunc {
+	return func(t *celTemplate) {
 		t.celOptions = append(t.celOptions, moreOptions...)
 	}
 }
 
-func WithFragments(templates map[string]string) templateConfigFunc {
-	return func(t *Template) {
+// WithFragments registers a map of templates that can be used within this template.
+func WithFragments(templates map[string]string) TemplateConfigFunc {
+	return func(t *celTemplate) {
 		t.fragments = templates
 	}
 }
 
-func New(template string, config ...templateConfigFunc) (*Template, error) {
-	t := &Template{
+// Creates a new Template using the provided input and options
+func New(template string, config ...TemplateConfigFunc) (Template, error) {
+	t := &celTemplate{
 		ref:               make(map[string]interface{}),
 		fragments:         make(map[string]string),
 		compiledFragments: make(map[string]*orderedmap.OrderedMap[string, interface{}]),
@@ -349,7 +369,8 @@ func New(template string, config ...templateConfigFunc) (*Template, error) {
 	templateOptions = append(templateOptions, cel.Variable("data", cel.MapType(cel.StringType, cel.DynType)))
 	templateOptions = append(templateOptions, getRemoveFunction())
 	templateOptions = append(templateOptions, t.getFragmentsFunction())
-	templateOptions = append(templateOptions, cel.Types(OrderedCelMapType))
+	templateOptions = append(templateOptions, cel.CustomTypeAdapter(orderedCelMapCustomTypeAdapter{}))
+	templateOptions = append(templateOptions, cel.Types(orderedCelMapType))
 
 	env, err := cel.NewEnv(templateOptions...)
 
@@ -371,7 +392,8 @@ func New(template string, config ...templateConfigFunc) (*Template, error) {
 	fragmentOptions = append(fragmentOptions, cel.Variable("ref", cel.MapType(cel.StringType, cel.DynType)))
 	fragmentOptions = append(fragmentOptions, cel.Variable("args", cel.ListType(cel.DynType)))
 	fragmentOptions = append(fragmentOptions, getRemoveFunction())
-	fragmentOptions = append(fragmentOptions, cel.Types(OrderedCelMapType))
+	fragmentOptions = append(fragmentOptions, cel.CustomTypeAdapter(orderedCelMapCustomTypeAdapter{}))
+	fragmentOptions = append(fragmentOptions, cel.Types(orderedCelMapType))
 
 	fragEnv, err := cel.NewEnv(fragmentOptions...)
 
